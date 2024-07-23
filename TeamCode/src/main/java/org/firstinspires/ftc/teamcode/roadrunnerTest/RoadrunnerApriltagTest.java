@@ -2,6 +2,8 @@ package org.firstinspires.ftc.teamcode.roadrunnerTest;
 
 import android.util.Size;
 
+import androidx.annotation.NonNull;
+
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
@@ -107,13 +109,13 @@ public class RoadrunnerApriltagTest extends LinearOpMode {
 
 
         Action TrajectoryAction1  = drive.actionBuilder(drive.pose)
-                .splineTo(new Vector2d(23, 0), 0)
+                .strafeTo(new Vector2d(0, 23))
                 .build();
         Action TrajectoryAction2  = drive.actionBuilder(drive.pose)
-                .splineTo(new Vector2d(0, -23), 0)
+                .lineToXLinearHeading(-23,0)
                 .build();
         Action TrajectoryAction3  = drive.actionBuilder(drive.pose)
-                .splineTo(new Vector2d(-23, 0), 0)
+                .strafeTo(new Vector2d(0, -23))
                 .build();
 
         waitForStart();
@@ -146,19 +148,47 @@ public class RoadrunnerApriltagTest extends LinearOpMode {
                     if (myAprilTagIdCode == 1){
                         Actions.runBlocking(
                                 new SequentialAction(
-                                        TrajectoryAction1
+                                        TrajectoryAction1,
+
+                                        new Action() {
+                                            @Override
+                                            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+                                                telemetry.addData("Detection", "1");
+                                                telemetry.update();
+                                                return false;
+                                            }
+                                        }
                                 )
                         );
                     }else if(myAprilTagIdCode == 2){
                         Actions.runBlocking(
                                 new SequentialAction(
-                                        TrajectoryAction2
+                                        TrajectoryAction2,
+
+                                        new Action() {
+                                            @Override
+                                            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+                                                telemetry.addData("Detection", "2");
+                                                telemetry.update();
+                                                return false;
+                                            }
+                                        }
                                 )
                         );
                     }else{
                         Actions.runBlocking(
                                 new SequentialAction(
-                                        TrajectoryAction3
+                                        TrajectoryAction3,
+
+                                        new Action() {
+                                            @Override
+                                            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+                                                telemetry.addData("Detection", "3 or none");
+                                                telemetry.update();
+                                                return false;
+                                            }
+                                        }
+
                                 )
                         );
                     }
