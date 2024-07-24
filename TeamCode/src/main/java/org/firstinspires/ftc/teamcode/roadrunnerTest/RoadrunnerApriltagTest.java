@@ -30,66 +30,12 @@ import java.util.ArrayList;
 @TeleOp
 
 public class RoadrunnerApriltagTest extends LinearOpMode {
-    private int targetTagID = 0;
 
-    private double xyScaling = 1.00;
-    private double rangeCorrection = 0; //inches
-    private double tagX = 24;//62.34;  //inches
-    private double tagY1 = 5;//41.65; //blue left tagID = 1
-    private double tagY2 = 0;//35.60; //blue center tagID = 2
-    private double tagY3 = -5;//29.61; //blue right tagID = 3
-    private double tagY4 = -29.61; //red left tagID = 4
-    private double tagY5 = -35.60; //red center tagID = 5
-    private double tagY6 = -62.34; //red right tagID = 6
-    private double  dCamera = 5; //distance from center of robot to camera
-
-    private double[] getRobotXY(AprilTagDetection tag) {
-        double[] robotXY = new double[8];
-        double tagY = 0; //inches
-
-        if (tag.id==1){
-            tagY = tagY1;}
-        else if (tag.id==2) {
-            tagY = tagY2;}
-        else if (tag.id==3) {
-            tagY = tagY3;}
-        else if (tag.id==4) {
-            tagY = tagY4;}
-        else if (tag.id==5) {
-            tagY = tagY5;}
-        else if (tag.id==6) {
-            tagY = tagY6;}
-
-        // get range, bearing, and yaw from april tag
-        double rangeAT = tag.ftcPose.range + rangeCorrection;
-        double bearingAT = Math.toRadians(tag.ftcPose.bearing);
-        double yawAT = Math.toRadians(tag.ftcPose.yaw);
-
-        //calculating deltaX and deltaY of the tag relative to the camera
-        double camTagX = rangeAT * Math.cos(bearingAT - yawAT);
-        double camTagY = rangeAT * Math.sin(bearingAT - yawAT);
-
-        //calculating deltaX and deltaY of the camera relative to the center of robot
-        double camX = dCamera * Math.cos(-yawAT);
-        double camY = dCamera * Math.sin(-yawAT);
-
-        //calculating relative X and relative Y of the robot to the tag
-        robotXY[0] = xyScaling*(tagX - camTagX - camX);
-        robotXY[1] = xyScaling*(tagY - camTagY - camY);
-        robotXY[2] = tagX;
-        robotXY[3] = camTagX;
-        robotXY[4] = camX;
-        robotXY[5] = tagY;
-        robotXY[6] = camTagY;
-        robotXY[7] = camY;
-
-        return robotXY;
-    }
     @Override
     public void runOpMode() throws InterruptedException {
+
+
         MecanumDrive drive = new MecanumDrive(hardwareMap, new Pose2d(0,0,0));
-
-
 
         AprilTagProcessor myAprilTagProcessor = new AprilTagProcessor.Builder()
                 .setDrawAxes(true)
@@ -107,7 +53,7 @@ public class RoadrunnerApriltagTest extends LinearOpMode {
 
 
 
-
+// Build 3 trajectories for 3 different Apriltag
         Action TrajectoryAction1  = drive.actionBuilder(drive.pose)
                 .strafeTo(new Vector2d(0, 23))
                 .build();
@@ -120,7 +66,6 @@ public class RoadrunnerApriltagTest extends LinearOpMode {
 
         waitForStart();
 
-        if (isStopRequested()) return;
 
         while (!isStopRequested() && opModeIsActive()) {
 
@@ -142,60 +87,77 @@ public class RoadrunnerApriltagTest extends LinearOpMode {
             myAprilTagDetections = myAprilTagProcessor.getDetections();
             for (AprilTagDetection detection : myAprilTagDetections) {
                 if (detection.metadata != null) {
-                    double[] robotXYthisTag = getRobotXY(detection);
 
+                    //Get current tag ID
                     myAprilTagIdCode = detection.id;
-                    if (myAprilTagIdCode == 1){
-                        Actions.runBlocking(
-                                new SequentialAction(
-                                        TrajectoryAction1,
 
-                                        new Action() {
-                                            @Override
-                                            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                                                telemetry.addData("Detection", "1");
-                                                telemetry.update();
-                                                return false;
-                                            }
-                                        }
-                                )
-                        );
-                    }else if(myAprilTagIdCode == 2){
-                        Actions.runBlocking(
-                                new SequentialAction(
-                                        TrajectoryAction2,
-
-                                        new Action() {
-                                            @Override
-                                            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                                                telemetry.addData("Detection", "2");
-                                                telemetry.update();
-                                                return false;
-                                            }
-                                        }
-                                )
-                        );
-                    }else{
-                        Actions.runBlocking(
-                                new SequentialAction(
-                                        TrajectoryAction3,
-
-                                        new Action() {
-                                            @Override
-                                            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                                                telemetry.addData("Detection", "3 or none");
-                                                telemetry.update();
-                                                return false;
-                                            }
-                                        }
-
-                                )
-                        );
-                    }
-
+                    //Update the tag details
+                    telemetry.addData("x", detection.ftcPose.x);
+                    telemetry.addData("y", detection.ftcPose.y);
+                    telemetry.addData("z", detection.ftcPose.z);
+                    telemetry.addData("roll", detection.ftcPose.roll);
+                    telemetry.addData("pitch", detection.ftcPose.pitch);
                     telemetry.addData("yaw", detection.ftcPose.yaw);
                     telemetry.addData("bearing", detection.ftcPose.bearing);
                     telemetry.addData("range", detection.ftcPose.range );
+
+                    /* Run trajectories based on AprilTag ID.
+                    Tag ID 1: Strafe left 1 tile (23 inches)
+                    Tag ID 2: Go backwards 1 tile
+                    Tag ID 3: Strafe right 1 tile (23 inches)
+                    Invalid ID: Show "Unknown Detection"
+                     */
+                    switch (myAprilTagIdCode){
+                        case 1:
+                            Actions.runBlocking(
+                                    new SequentialAction(
+                                            TrajectoryAction1,
+                                            new Action() {
+                                                @Override
+                                                public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+                                                    telemetry.addData("Detection", "1");
+                                                    telemetry.update();
+                                                    return false;
+                                                }
+                                            }
+                                    )
+                            );
+
+                            break;
+                        case 2:
+                            Actions.runBlocking(
+                                    new SequentialAction(
+                                            TrajectoryAction2,
+                                            new Action() {
+                                                @Override
+                                                public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+                                                    telemetry.addData("Detection", "2");
+                                                    telemetry.update();
+                                                    return false;
+                                                }
+                                            }
+                                    )
+                            );
+                            break;
+                        case 3:
+                            Actions.runBlocking(
+                                    new SequentialAction(
+                                            TrajectoryAction3,
+                                            new Action() {
+                                                @Override
+                                                public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+                                                    telemetry.addData("Detection", "3");
+                                                    telemetry.update();
+                                                    return false;
+                                                }
+                                            }
+                                    )
+                            );
+                            break;
+
+                    }
+
+
                 }
                 else {
                     telemetry.addLine(String.format("\n==== (ID %d) Unknown", detection.id));

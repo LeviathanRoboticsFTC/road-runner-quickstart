@@ -32,48 +32,50 @@ public class TrajectoryTest extends LinearOpMode{
         Action TrajectoryAction2 = drive.actionBuilder(new Pose2d(15,20,0))
                 .lineToX(10)
                 .build();
-        while(!isStopRequested() && !opModeIsActive()) {
-
-        }
 
         waitForStart();
 
         if (isStopRequested()) return;
 
-        Actions.runBlocking(
-                new SequentialAction(
-                        TrajectoryAction2, // Example of a drive action
+        while(!isStopRequested() && opModeIsActive()) {
+            Actions.runBlocking(
+                    new SequentialAction(
+                            TrajectoryAction2, // Example of a drive action
 
-                        // This action and the following action do the same thing
-                        new Action() {
-                            @Override
-                            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                                telemetry.addLine("Action!");
-                                telemetry.update();
-                                return false;
-                            }
-                        },
-                        // Only that this action uses a Lambda expression to reduce complexity
-                        (telemetryPacket) -> {
-                            telemetry.addLine("Action!");
-                            telemetry.update();
-                            return false; // Returning true causes the action to run again, returning false causes it to cease
-                        },
-                        /**
-                         * new ParallelAction( // several actions being run in parallel
-                                TrajectoryAction2, // Run second trajectory
-                                (telemetryPacket) -> { // Run some action
-                                    board.drivePowerFoward(0.6);
+                            // This action and the following action do the same thing
+                            new Action() {
+                                @Override
+                                public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+                                    telemetry.addLine("Action!");
+                                    telemetry.update();
                                     return false;
                                 }
-                        ),
-                         */
-                        drive.actionBuilder(new Pose2d(10,0,Math.toRadians(90))) // Another way of running a trajectory (not recommended because trajectories take time to build and will slow down your code, always try to build them beforehand)
-                                .splineTo(new Vector2d(23, 0), 0)
-                                .build()
+                            },
+                            // Only that this action uses a Lambda expression to reduce complexity
+                            (telemetryPacket) -> {
+                                telemetry.addLine("Action!");
+                                telemetry.update();
+                                return false; // Returning true causes the action to run again, returning false causes it to cease
+                            },
+                            /**
+                             * new ParallelAction( // several actions being run in parallel
+                             TrajectoryAction2, // Run second trajectory
+                             (telemetryPacket) -> { // Run some action
+                             board.drivePowerFoward(0.6);
+                             return false;
+                             }
+                             ),
+                             */
+                            drive.actionBuilder(new Pose2d(10,0,Math.toRadians(90))) // Another way of running a trajectory (not recommended because trajectories take time to build and will slow down your code, always try to build them beforehand)
+                                    .splineTo(new Vector2d(23, 0), 0)
+                                    .build()
 
-                )
-        );
+                    )
+            );
+
+        }
+
+
 
 
     }
