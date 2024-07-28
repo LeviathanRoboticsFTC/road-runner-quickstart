@@ -21,7 +21,7 @@ public class Vision extends LinearOpMode {
                 .setDrawCubeProjection(true)
                 .setDrawTagID(true)
                 .setDrawTagOutline(true)
-                .setLensIntrinsics(276.618, 276.618, 318.459, 283.057)
+                .setLensIntrinsics(647.83, 647.83, 331.263, 220.186)
                 .build();
 
         VisionPortal visionPortal = new VisionPortal.Builder()

@@ -55,7 +55,7 @@ public class RoadrunnerApriltagTest extends LinearOpMode {
 
 // Build 3 trajectories for 3 different Apriltag
         Action TrajectoryAction1  = drive.actionBuilder(drive.pose)
-                .strafeTo(new Vector2d(0, 23))
+                .strafeTo(new Vector2d(-5, 0))
                 .build();
         Action TrajectoryAction2  = drive.actionBuilder(drive.pose)
                 .lineToXLinearHeading(-23,0)
@@ -88,7 +88,7 @@ public class RoadrunnerApriltagTest extends LinearOpMode {
             for (AprilTagDetection detection : myAprilTagDetections) {
                 if (detection.metadata != null) {
 
-                    //Get current tag ID
+                    // Follow 3 different trajectory based on detection of 3 AprilTag
                     myAprilTagIdCode = detection.id;
 
                     //Update the tag details
@@ -101,11 +101,10 @@ public class RoadrunnerApriltagTest extends LinearOpMode {
                     telemetry.addData("bearing", detection.ftcPose.bearing);
                     telemetry.addData("range", detection.ftcPose.range );
 
-                    /* Run trajectories based on AprilTag ID.
-                    Tag ID 1: Strafe left 1 tile (23 inches)
-                    Tag ID 2: Go backwards 1 tile
-                    Tag ID 3: Strafe right 1 tile (23 inches)
-                    Invalid ID: Show "Unknown Detection"
+                    /* Run trajectories based on ApriTag ID.
+                    Tag ID 1: Strafe left for 1 til
+                    Tag ID 2:
+                    Tag ID 3:
                      */
                     switch (myAprilTagIdCode){
                         case 1:
