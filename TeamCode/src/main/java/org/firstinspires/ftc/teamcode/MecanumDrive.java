@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode;
 
+import android.util.Size;
+
 import androidx.annotation.NonNull;
 
 import com.acmerobotics.dashboard.canvas.Canvas;
@@ -37,16 +39,22 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.robotcore.hardware.TouchSensor;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.messages.DriveCommandMessage;
 import org.firstinspires.ftc.teamcode.messages.MecanumCommandMessage;
 import org.firstinspires.ftc.teamcode.messages.MecanumLocalizerInputsMessage;
 import org.firstinspires.ftc.teamcode.messages.PoseMessage;
+import org.firstinspires.ftc.vision.VisionPortal;
+import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import java.lang.Math;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -107,10 +115,12 @@ public final class MecanumDrive {
             new ProfileAccelConstraint(PARAMS.minProfileAccel, PARAMS.maxProfileAccel);
 
     public final DcMotorEx leftFront, leftBack, rightBack, rightFront;
+    public TouchSensor touchSensor;
 
     public final VoltageSensor voltageSensor;
 
     public final LazyImu lazyImu;
+    HardwareMap hardwareMap;
 
     public final Localizer localizer;
     public Pose2d pose;
@@ -221,6 +231,7 @@ public final class MecanumDrive {
         leftBack = hardwareMap.get(DcMotorEx.class, "leftBack");
         rightBack = hardwareMap.get(DcMotorEx.class, "rightBack");
         rightFront = hardwareMap.get(DcMotorEx.class, "rightFront");
+        touchSensor = hardwareMap.get(TouchSensor.class, "touch");
 
         leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         leftBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -240,6 +251,7 @@ public final class MecanumDrive {
         localizer = new ThreeDeadWheelLocalizer(hardwareMap, PARAMS.inPerTick);
 
         FlightRecorder.write("MECANUM_PARAMS", PARAMS);
+        this.hardwareMap=hardwareMap;
     }
 
     public void setDrivePowers(PoseVelocity2d powers) {
@@ -255,6 +267,157 @@ public final class MecanumDrive {
         leftBack.setPower(wheelVels.leftBack.get(0) / maxPowerMag);
         rightBack.setPower(wheelVels.rightBack.get(0) / maxPowerMag);
         rightFront.setPower(wheelVels.rightFront.get(0) / maxPowerMag);
+    }
+
+
+
+    public final class FollowTrajectoryActionCancellable implements Action {
+        public final TimeTrajectory timeTrajectory;
+        private double beginTs = -1;
+
+        private final double[] xPoints, yPoints;
+        private boolean cancelled;
+
+        public FollowTrajectoryActionCancellable(TimeTrajectory t) {
+            cancelled=false;
+            timeTrajectory = t;
+
+            List<Double> disps = com.acmerobotics.roadrunner.Math.range(
+                    0, t.path.length(),
+                    Math.max(2, (int) Math.ceil(t.path.length() / 2)));
+            xPoints = new double[disps.size()];
+            yPoints = new double[disps.size()];
+            for (int i = 0; i < disps.size(); i++) {
+                Pose2d p = t.path.get(disps.get(i), 1).value();
+                xPoints[i] = p.position.x;
+                yPoints[i] = p.position.y;
+            }
+        }
+
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            if(cancelled)
+            {
+                leftFront.setPower(0);
+                leftBack.setPower(0);
+                rightBack.setPower(0);
+                rightFront.setPower(0);
+
+                return false;
+            }
+
+
+            double t;
+            if (beginTs < 0) {
+                beginTs = Actions.now();
+                t = 0;
+            } else {
+                t = Actions.now() - beginTs;
+            }
+
+            if (t >= timeTrajectory.duration) {
+                leftFront.setPower(0);
+                leftBack.setPower(0);
+                rightBack.setPower(0);
+                rightFront.setPower(0);
+
+                return false;
+            }
+
+            Pose2dDual<Time> txWorldTarget = timeTrajectory.get(t);
+            targetPoseWriter.write(new PoseMessage(txWorldTarget.value()));
+
+            PoseVelocity2d robotVelRobot = updatePoseEstimate();
+
+            PoseVelocity2dDual<Time> command = new HolonomicController(
+                    PARAMS.axialGain, PARAMS.lateralGain, PARAMS.headingGain,
+                    PARAMS.axialVelGain, PARAMS.lateralVelGain, PARAMS.headingVelGain
+            )
+                    .compute(txWorldTarget, pose, robotVelRobot);
+            driveCommandWriter.write(new DriveCommandMessage(command));
+
+            MecanumKinematics.WheelVelocities<Time> wheelVels = kinematics.inverse(command);
+            double voltage = voltageSensor.getVoltage();
+
+            final MotorFeedforward feedforward = new MotorFeedforward(PARAMS.kS,
+                    PARAMS.kV / PARAMS.inPerTick, PARAMS.kA / PARAMS.inPerTick);
+            double leftFrontPower = feedforward.compute(wheelVels.leftFront) / voltage;
+            double leftBackPower = feedforward.compute(wheelVels.leftBack) / voltage;
+            double rightBackPower = feedforward.compute(wheelVels.rightBack) / voltage;
+            double rightFrontPower = feedforward.compute(wheelVels.rightFront) / voltage;
+            mecanumCommandWriter.write(new MecanumCommandMessage(
+                    voltage, leftFrontPower, leftBackPower, rightBackPower, rightFrontPower
+            ));
+
+            leftFront.setPower(leftFrontPower);
+            leftBack.setPower(leftBackPower);
+            rightBack.setPower(rightBackPower);
+            rightFront.setPower(rightFrontPower);
+
+            p.put("x", pose.position.x);
+            p.put("y", pose.position.y);
+            p.put("heading (deg)", Math.toDegrees(pose.heading.toDouble()));
+
+            Pose2d error = txWorldTarget.value().minusExp(pose);
+            p.put("xError", error.position.x);
+            p.put("yError", error.position.y);
+            p.put("headingError (deg)", Math.toDegrees(error.heading.toDouble()));
+
+            // only draw when active; only one drive action should be active at a time
+            Canvas c = p.fieldOverlay();
+            drawPoseHistory(c);
+
+            c.setStroke("#4CAF50");
+            Drawing.drawRobot(c, txWorldTarget.value());
+
+            c.setStroke("#3F51B5");
+            Drawing.drawRobot(c, pose);
+
+            c.setStroke("#4CAF50FF");
+            c.setStrokeWidth(1);
+            c.strokePolyline(xPoints, yPoints);
+
+            return true;
+        }
+
+        @Override
+        public void preview(Canvas c) {
+            c.setStroke("#4CAF507A");
+            c.setStrokeWidth(1);
+            c.strokePolyline(xPoints, yPoints);
+        }
+
+        public void cancel()
+        {
+            cancelled=true;
+        }
+    }
+    //This adds to original file
+    //This class is an example to show how to create cancilable class
+    public final class FollowTrajectoryTouchCancel implements Action
+    {
+        final Action action;
+        public FollowTrajectoryTouchCancel (Action action)
+        {
+            this.action=action;
+        }
+        @Override
+        public boolean run(@NonNull TelemetryPacket telemetryPacket)
+        {
+
+            //action.run(telemetryPacket);
+            //if  the sensor is pressed then cancel action
+            if(touchSensor.isPressed()){
+                leftBack.setPower(0);
+                leftFront.setPower(0);
+                rightBack.setPower(0);
+                rightFront.setPower(0);
+                return false;
+            }
+
+            //return true;
+            return action.run(telemetryPacket);
+        }
     }
 
     public final class FollowTrajectoryAction implements Action {
@@ -358,6 +521,57 @@ public final class MecanumDrive {
             c.setStroke("#4CAF507A");
             c.setStrokeWidth(1);
             c.strokePolyline(xPoints, yPoints);
+        }
+    }
+
+    //This is added on for testing april tag detection while turning
+    public final class TurnUntillAprillTag implements Action{
+        AprilTagProcessor myAprilTagProcessor;
+
+        AprilTagDetection currentDetection;
+    public TurnUntillAprillTag(){
+        myAprilTagProcessor = new AprilTagProcessor.Builder()
+                .setDrawAxes(true)
+                .setDrawCubeProjection(true)
+                .setDrawTagID(true)
+                .setDrawTagOutline(true)
+                .setLensIntrinsics(647.83, 647.83, 331.263, 220.186)
+                .build();
+
+        VisionPortal visionPortal = new VisionPortal.Builder()
+                .addProcessor(myAprilTagProcessor)
+                .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
+                .setCameraResolution(new Size(640, 480))
+                .build();
+    }
+        @Override
+        public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+            ArrayList<AprilTagDetection> myAprilTagDetections;  // list of all detections
+            myAprilTagDetections = myAprilTagProcessor.getDetections();
+            for (AprilTagDetection detection : myAprilTagDetections) {
+
+                if (detection.metadata != null) {
+                    int myAprilTagIdCode = detection.id;
+                    if (myAprilTagIdCode == 1) {
+                        currentDetection = detection;
+                        leftFront.setPower(0);
+                        leftBack.setPower(0);
+                        rightFront.setPower(0);
+                        rightBack.setPower(0);
+                        return false;
+                    }
+                }
+            }
+
+            leftFront.setPower(.3);
+            leftBack.setPower(.3);
+            rightFront.setPower(-.3);
+            rightBack.setPower(-.3);
+
+            return true;
+        }
+        public AprilTagDetection getDetection(){
+            return currentDetection;
         }
     }
 
@@ -475,6 +689,22 @@ public final class MecanumDrive {
         return new TrajectoryActionBuilder(
                 TurnAction::new,
                 FollowTrajectoryAction::new,
+                new TrajectoryBuilderParams(
+                        1e-6,
+                        new ProfileParams(
+                                0.25, 0.1, 1e-2
+                        )
+                ),
+                beginPose, 0.0,
+                defaultTurnConstraints,
+                defaultVelConstraint, defaultAccelConstraint
+        );
+    }
+
+    public TrajectoryActionBuilder actionBuilderCancellable(Pose2d beginPose) {
+        return new TrajectoryActionBuilder(
+                TurnAction::new,
+                FollowTrajectoryActionCancellable::new,
                 new TrajectoryBuilderParams(
                         1e-6,
                         new ProfileParams(

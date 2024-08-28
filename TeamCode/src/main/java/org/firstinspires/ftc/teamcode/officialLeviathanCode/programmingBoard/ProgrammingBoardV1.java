@@ -44,7 +44,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 public class ProgrammingBoardV1 {
 
 
-    private DcMotorEx leftFront, leftBack, rightFront, rightBack;
+    public DcMotorEx leftFront, leftBack, rightFront, rightBack;
 
     public void init(HardwareMap hardwareMap) {
 
